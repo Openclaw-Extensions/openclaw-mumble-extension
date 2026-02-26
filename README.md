@@ -21,6 +21,7 @@ Voice conversation with OpenClaw agents via Mumble VoIP. Supports multiple agent
 ## Installation
 
 ```bash
+mkdir -p ~/.openclaw/extensions
 cd ~/.openclaw/extensions
 git clone https://github.com/Openclaw-Extensions/openclaw-mumble-extension mumble
 cd mumble
