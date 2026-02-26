@@ -1,0 +1,98 @@
+{
+  "id": "mumble",
+  "name": "Mumble Voice Chat",
+  "description": "Voice conversation with OpenClaw agents via Mumble VoIP",
+  "version": "2.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "description": "Enable Mumble voice chat extension",
+        "default": false
+      },
+      "agents": {
+        "type": "object",
+        "description": "Map of agent key → Mumble connection config. Each agent gets its own Mumble room and bot identity.",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "mumble": {
+              "type": "object",
+              "description": "Mumble server connection settings for this agent",
+              "properties": {
+                "host": { "type": "string", "description": "Mumble server hostname or IP" },
+                "port": { "type": "number", "description": "Mumble server port", "default": 64738 },
+                "username": { "type": "string", "description": "Bot username on Mumble" },
+                "password": { "type": "string", "description": "Server password (optional)" },
+                "channel": { "type": "string", "description": "Channel to join (empty = root)" }
+              }
+            },
+            "agent": {
+              "type": "object",
+              "description": "OpenClaw agent routing",
+              "properties": {
+                "sessionKey": {
+                  "type": "string",
+                  "description": "Agent session key to route voice messages to (e.g. 'myka', 'wanda')"
+                }
+              }
+            },
+            "tts": {
+              "type": "object",
+              "description": "TTS overrides for this agent. If omitted, uses openclaw's global messages.tts config.",
+              "properties": {
+                "voice": {
+                  "type": "string",
+                  "description": "Voice override for this agent's Mumble channel (e.g. 'af_nova+jf_alpha')"
+                }
+              }
+            },
+            "processing": {
+              "type": "object",
+              "description": "Audio processing settings",
+              "properties": {
+                "minSpeechDurationMs": {
+                  "type": "number",
+                  "description": "Minimum speech duration in milliseconds",
+                  "default": 500
+                },
+                "silenceTimeoutMs": {
+                  "type": "number",
+                  "description": "Silence timeout in milliseconds",
+                  "default": 500
+                },
+                "allowFrom": {
+                  "type": "array",
+                  "description": "Mumble usernames allowed to trigger this bot (empty = allow all)",
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "gateway": {
+              "type": "object",
+              "description": "OpenClaw gateway connection",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "Gateway base URL",
+                  "default": "http://localhost:18789"
+                },
+                "token": {
+                  "type": "string",
+                  "description": "Gateway authentication token"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "uiHints": {
+    "enabled": {
+      "label": "Enable Mumble Voice Chat"
+    }
+  }
+}
