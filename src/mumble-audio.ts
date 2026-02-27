@@ -41,37 +41,57 @@ export interface FullAudioPacket {
 }
 
 /**
- * Read a varint from buffer (Mumble uses protobuf-style varints)
+ * Read a Mumble varint from buffer.
+ * Mumble uses its own big-endian varint format (not protobuf/LEB128).
  */
 function readVarint(buffer: Buffer, offset: number = 0): { value: number; bytesRead: number } {
-  let value = 0;
-  let bytesRead = 0;
-  let shift = 0;
+  const sub = buffer.subarray(offset);
+  if (sub.length === 0) return { value: 0, bytesRead: 0 };
 
-  while (offset + bytesRead < buffer.length) {
-    const byte = buffer[offset + bytesRead];
-    value |= (byte & 0x7f) << shift;
-    bytesRead++;
-    if ((byte & 0x80) === 0) {
-      break;
-    }
-    shift += 7;
+  const b0 = sub[0];
+
+  if ((b0 & 0x80) === 0) {
+    return { value: b0, bytesRead: 1 };
+  } else if ((b0 & 0xc0) === 0x80) {
+    return { value: ((b0 & 0x3f) << 8) | sub[1], bytesRead: 2 };
+  } else if ((b0 & 0xe0) === 0xc0) {
+    return { value: ((b0 & 0x1f) << 16) | (sub[1] << 8) | sub[2], bytesRead: 3 };
+  } else if ((b0 & 0xf0) === 0xe0) {
+    return {
+      value: ((b0 & 0x0f) << 24) | (sub[1] << 16) | (sub[2] << 8) | sub[3],
+      bytesRead: 4,
+    };
+  } else if ((b0 & 0xfc) === 0xf0) {
+    return { value: sub.readUInt32BE(1), bytesRead: 5 };
   }
 
-  return { value, bytesRead };
+  return { value: 0, bytesRead: 1 };
 }
 
 /**
- * Write a varint to buffer
+ * Write a Mumble varint to buffer.
+ * Mumble uses its own big-endian varint format (not protobuf/LEB128).
  */
 function writeVarint(value: number): Buffer {
-  const bytes: number[] = [];
-  while (value > 0x7f) {
-    bytes.push((value & 0x7f) | 0x80);
-    value >>>= 7;
+  if (value < 0x80) {
+    return Buffer.from([value]);
+  } else if (value < 0x4000) {
+    return Buffer.from([0x80 | (value >> 8), value & 0xff]);
+  } else if (value < 0x200000) {
+    return Buffer.from([0xc0 | (value >> 16), (value >> 8) & 0xff, value & 0xff]);
+  } else if (value < 0x10000000) {
+    return Buffer.from([
+      0xe0 | (value >> 24),
+      (value >> 16) & 0xff,
+      (value >> 8) & 0xff,
+      value & 0xff,
+    ]);
+  } else {
+    const buf = Buffer.alloc(5);
+    buf[0] = 0xf0;
+    buf.writeUInt32BE(value, 1);
+    return buf;
   }
-  bytes.push(value & 0x7f);
-  return Buffer.from(bytes);
 }
 
 /**
