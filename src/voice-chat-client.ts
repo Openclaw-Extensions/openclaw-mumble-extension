@@ -11,7 +11,6 @@
  */
 
 import { EventEmitter } from "node:events";
-import { Client } from "@tf2pickup-org/mumble-client";
 import fetch from "node-fetch";
 import {
   AudioCodec,
@@ -25,9 +24,86 @@ import {
   AudioFrameAccumulator,
   pcmToWav,
   chunkAudioForEncoding,
-  sleep,
   MUMBLE_AUDIO_CONFIG,
 } from "./opus-audio-pipeline.js";
+
+interface WavInfo {
+  sampleRate: number;
+  channels: number;
+  bitsPerSample: number;
+  pcm: Int16Array;
+}
+
+/** Parse a WAV buffer, returning normalized 16-bit PCM + header info */
+function parseWav(buf: Buffer): WavInfo | null {
+  if (buf.length < 44 || buf.toString("ascii", 0, 4) !== "RIFF") return null;
+  if (buf.toString("ascii", 8, 12) !== "WAVE") return null;
+
+  const audioFormat = buf.readUInt16LE(20);
+  const channels = buf.readUInt16LE(22);
+  const sampleRate = buf.readUInt32LE(24);
+  const bitsPerSample = buf.readUInt16LE(34);
+
+  // Walk chunks to find "data"
+  let offset = 12;
+  let dataOffset = -1;
+  let dataSize = 0;
+  while (offset + 8 <= buf.length) {
+    const id = buf.toString("ascii", offset, offset + 4);
+    const size = buf.readUInt32LE(offset + 4);
+    if (id === "data") {
+      dataOffset = offset + 8;
+      dataSize = size;
+      break;
+    }
+    offset += 8 + size;
+  }
+  if (dataOffset < 0) return null;
+
+  let pcm: Int16Array;
+  if (audioFormat === 3 && bitsPerSample === 32) {
+    // IEEE float 32-bit → Int16
+    const floats = new Float32Array(buf.buffer, buf.byteOffset + dataOffset, dataSize / 4);
+    pcm = new Int16Array(floats.length);
+    for (let i = 0; i < floats.length; i++) {
+      pcm[i] = Math.max(-32768, Math.min(32767, Math.round(floats[i] * 32767)));
+    }
+  } else if (audioFormat === 1 && bitsPerSample === 16) {
+    pcm = new Int16Array(buf.buffer, buf.byteOffset + dataOffset, dataSize / 2);
+  } else {
+    return null; // unsupported format
+  }
+
+  return { sampleRate, channels, bitsPerSample, pcm };
+}
+
+/** Downmix interleaved multi-channel PCM to mono */
+function mixToMono(pcm: Int16Array, channels: number = 2): Int16Array {
+  const frames = Math.floor(pcm.length / channels);
+  const mono = new Int16Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    for (let c = 0; c < channels; c++) sum += pcm[i * channels + c];
+    mono[i] = Math.round(sum / channels);
+  }
+  return mono;
+}
+
+/** Linear interpolation resampler for mono Int16Array */
+function resampleLinear(pcm: Int16Array, fromRate: number, toRate: number): Int16Array {
+  if (fromRate === toRate) return pcm;
+  const ratio = fromRate / toRate;
+  const outLen = Math.floor(pcm.length / ratio);
+  const out = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcPos = i * ratio;
+    const lo = Math.floor(srcPos);
+    const hi = Math.min(lo + 1, pcm.length - 1);
+    const frac = srcPos - lo;
+    out[i] = Math.round(pcm[lo] * (1 - frac) + pcm[hi] * frac);
+  }
+  return out;
+}
 
 export interface VoiceChatConfig {
   // Mumble connection
@@ -386,17 +462,25 @@ export class VoiceChatClient extends EventEmitter {
 
       const wavData = await response.buffer();
 
-      // Skip WAV header (44 bytes) and extract PCM data
-      const pcmData24k = new Int16Array(
-        wavData.buffer,
-        wavData.byteOffset + 44,
-        (wavData.byteLength - 44) / 2,
+      // Parse WAV header to get sample rate, bit depth, channels, and data offset
+      const wav = parseWav(wavData);
+      if (!wav) {
+        throw new Error("TTS returned invalid or unsupported WAV data");
+      }
+      console.log(
+        `[voice-chat] TTS WAV: ${wav.sampleRate}Hz, ${wav.channels}ch, ${wav.bitsPerSample}-bit, ${wav.pcm.length} samples`,
       );
 
-      // Resample from 24kHz to 48kHz (simple linear interpolation)
-      const pcm = this.resample24to48(pcmData24k);
+      // Mix down to mono if stereo
+      const mono = wav.channels === 1 ? wav.pcm : mixToMono(wav.pcm, wav.channels);
 
-      // Chunk into 10ms frames (480 samples at 48kHz - Mumble low-latency standard)
+      // Resample to 48kHz if needed
+      const pcm =
+        wav.sampleRate === MUMBLE_AUDIO_CONFIG.sampleRate
+          ? mono
+          : resampleLinear(mono, wav.sampleRate, MUMBLE_AUDIO_CONFIG.sampleRate);
+
+      // Chunk into 10ms frames (480 samples at 48kHz)
       const frames = chunkAudioForEncoding(pcm);
 
       console.log(

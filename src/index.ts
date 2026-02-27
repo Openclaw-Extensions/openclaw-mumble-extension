@@ -79,7 +79,11 @@ function resolveTtsBaseUrl(tts: TtsConfig | undefined): string {
       return tts?.piper?.baseUrl ?? "http://localhost:8101";
     case "openai":
     default:
-      return process.env["OPENAI_TTS_BASE_URL"] ?? "https://api.openai.com/v1";
+      return (
+        tts?.openai?.baseUrl ??
+        process.env["OPENAI_TTS_BASE_URL"] ??
+        "https://api.openai.com/v1"
+      );
   }
 }
 
