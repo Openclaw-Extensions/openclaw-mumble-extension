@@ -1,1 +1,0 @@
-{"version":3,"file":"varint-reader.d.ts","sourceRoot":"","sources":["../src/varint-reader.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,MAAM,WAAW,YAAY;IAC3B,KAAK,EAAE,MAAM,CAAC;IACd,MAAM,EAAE,MAAM,CAAC;CAChB;AAED;;;GAGG;AACH,wBAAgB,UAAU,CAAC,MAAM,EAAE,MAAM,GAAG,YAAY,CAmBvD"}
