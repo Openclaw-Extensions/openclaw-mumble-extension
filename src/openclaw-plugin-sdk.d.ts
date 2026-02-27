@@ -26,5 +26,11 @@ declare module "openclaw/plugin-sdk" {
     registerHttpHandler(
       handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>,
     ): void;
+    invokeAgent(opts: {
+      message: string;
+      sessionKey?: string;
+      systemPrompt?: string;
+      timeout?: number;
+    }): Promise<string>;
   }
 }

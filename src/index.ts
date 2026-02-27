@@ -8,7 +8,6 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Client } from "@tf2pickup-org/mumble-client";
-import fetch from "node-fetch";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { MumbleAudioStream, type FullAudioPacket } from "./mumble-audio.js";
 import { VoiceChatClient, type VoiceMessage } from "./voice-chat-client.js";
@@ -56,10 +55,6 @@ interface AgentMumbleConfig {
     minSpeechDurationMs?: number;
     silenceTimeoutMs?: number;
     allowFrom?: string[];
-  };
-  gateway?: {
-    url?: string;
-    token?: string;
   };
 }
 
@@ -179,8 +174,6 @@ export default {
 
       // Per-agent voice override, falls back to global TTS voice
       const ttsVoice = agentCfg.tts?.voice ?? globalTtsVoice;
-      const gatewayUrl = agentCfg.gateway?.url ?? "http://localhost:18789";
-      const gatewayToken = agentCfg.gateway?.token ?? "";
 
       api.logger.info(
         `[mumble:${agentKey}] ${agentCfg.mumble.host}:${agentCfg.mumble.port ?? 64738} ` +
@@ -190,45 +183,6 @@ export default {
       let voiceClient: VoiceChatClient | null = null;
       let mumbleClient: Client | null = null;
       let audioStream: MumbleAudioStream | null = null;
-
-      const getAgentResponse = async (text: string, username: string): Promise<string> => {
-        const sessionKey = agentCfg.agent?.sessionKey;
-        const response = await fetch(`${gatewayUrl}/v1/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {}),
-          },
-          body: JSON.stringify({
-            // Route to specific agent session if configured, otherwise default
-            model: sessionKey ? `openclaw:${sessionKey}` : "openclaw:main",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "This is a VOICE conversation via Mumble. Your response will be spoken aloud using TTS. DO NOT use emojis, symbols, markdown, bullet points, or any special formatting. Write natural, conversational speech only. Keep responses concise (under 3 sentences).",
-              },
-              {
-                role: "user",
-                content: `[Voice from ${username}]: ${text}`,
-              },
-            ],
-            user: `mumble-extension:${agentKey}:${username}`,
-          }),
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Chat completions API error: ${response.status} ${error}`);
-        }
-
-        const data = (await response.json()) as any;
-        const choices = data.choices ?? [];
-        if (choices.length > 0 && choices[0].message?.content) {
-          return choices[0].message.content.trim();
-        }
-        return "";
-      };
 
       api.registerService({
         id: `mumble-${agentKey}`,
@@ -290,7 +244,12 @@ export default {
           voiceClient.on("voiceMessage", async (msg: VoiceMessage) => {
             try {
               api.logger.info(`[mumble:${agentKey}] "${msg.text.substring(0, 80)}..." from ${msg.username}`);
-              const responseText = await getAgentResponse(msg.text, msg.username);
+              const responseText = await api.invokeAgent({
+                message: `[Voice from ${msg.username}]: ${msg.text}`,
+                sessionKey: agentCfg.agent?.sessionKey,
+                systemPrompt:
+                  "This is a VOICE conversation via Mumble. DO NOT use emojis, symbols, markdown, or formatting. Write natural speech only. Keep responses under 3 sentences.",
+              });
               if (responseText && voiceClient) {
                 await voiceClient.speak(responseText);
               }
