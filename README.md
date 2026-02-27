@@ -24,6 +24,7 @@ Voice conversation with OpenClaw agents via Mumble VoIP. Supports multiple agent
 git clone https://github.com/Openclaw-Extensions/openclaw-mumble-extension ~/.openclaw/extensions-src/openclaw-mumble-extension
 openclaw plugins install ~/.openclaw/extensions-src/openclaw-mumble-extension
 openclaw plugins enable mumble
+openclaw config set plugins.entries.mumble.config.enabled true
 ```
 
 ## Configuration
