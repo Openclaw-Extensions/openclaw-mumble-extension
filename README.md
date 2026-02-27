@@ -37,6 +37,7 @@ Add to your `openclaw.json`. Each key under `agents` is an arbitrary name matchi
       "mumble": {
         "enabled": true,
         "config": {
+          "enabled": true,
           "agents": {
             "agent-one": {
               "mumble": {
